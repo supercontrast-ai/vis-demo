@@ -1,0 +1,7 @@
+black
+gradio
+isort
+jiwer
+nltk
+num2words
+sacrebleu
