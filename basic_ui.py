@@ -273,24 +273,16 @@ def process_transcription(audio, providers, expected_transcription=None) -> list
                 ),
                 "metrics": metrics,
             }
-    else:
-        results = {
-            provider: {
-                "original": text,
-                "line_diff": "",
-                "word_diff": "",
-                "metrics": "",
-            }
-            for provider, text in results.items()
-        }
 
-    return [
-        f"Original Transcription:\n\n{results.get(provider, {}).get('original', '')}\n\n"
-        f"Diff (Normalized, line-by-line):\n\n{results.get(provider, {}).get('line_diff', '')}\n\n"
-        f"Diff (Normalized, word-by-word):\n\n{results.get(provider, {}).get('word_diff', '')}\n\n"
-        f"Metrics:\n\n{results.get(provider, {}).get('metrics', '')}"
-        for provider in ["AZURE", "OPENAI"]
-    ]
+        return [
+            f"Original Transcription:\n\n{results.get(provider, {}).get('original', '')}\n\n"
+            f"Diff (Normalized, line-by-line):\n\n{results.get(provider, {}).get('line_diff', '')}\n\n"
+            f"Diff (Normalized, word-by-word):\n\n{results.get(provider, {}).get('word_diff', '')}\n\n"
+            f"Metrics:\n\n{results.get(provider, {}).get('metrics', '')}"
+            for provider in ["AZURE", "OPENAI"]
+        ]
+    else:
+        return [f"{results.get(provider, '')}" for provider in ["AZURE", "OPENAI"]]
 
 
 # Add this new function to calculate translation-specific metrics
@@ -365,24 +357,19 @@ def process_translation(
                 ),
                 "metrics": metrics,
             }
-    else:
-        results = {
-            provider: {
-                "original": translation,
-                "line_diff": "",
-                "word_diff": "",
-                "metrics": "",
-            }
-            for provider, translation in results.items()
-        }
 
-    return [
-        f"Original Translation ({source_lang} to {target_lang}):\n\n{results.get(provider, {}).get('original', '')}\n\n"
-        f"Diff (Normalized, line-by-line):\n\n{results.get(provider, {}).get('line_diff', '')}\n\n"
-        f"Diff (Normalized, word-by-word):\n\n{results.get(provider, {}).get('word_diff', '')}\n\n"
-        f"Metrics:\n\n{results.get(provider, {}).get('metrics', '')}"
-        for provider in ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"]
-    ]
+        return [
+            f"Original Translation ({source_lang} to {target_lang}):\n\n{results.get(provider, {}).get('original', '')}\n\n"
+            f"Diff (Normalized, line-by-line):\n\n{results.get(provider, {}).get('line_diff', '')}\n\n"
+            f"Diff (Normalized, word-by-word):\n\n{results.get(provider, {}).get('word_diff', '')}\n\n"
+            f"Metrics:\n\n{results.get(provider, {}).get('metrics', '')}"
+            for provider in ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"]
+        ]
+    else:
+        return [
+            f"{results.get(provider, '')}"
+            for provider in ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"]
+        ]
 
 
 def gradio_demo():
@@ -457,11 +444,11 @@ def gradio_demo():
                             gr.Textbox(label=f"{provider} Transcription Result")
                         )
 
-                    transcription_providers.change(
-                        lambda p, prov=provider: gr.update(visible=prov in p),
-                        inputs=[transcription_providers],
-                        outputs=[provider_column],
-                    )
+                transcription_providers.change(
+                    lambda p, prov=provider: gr.update(visible=prov in p),
+                    inputs=[transcription_providers],
+                    outputs=[provider_column],
+                )
 
             transcription_button.click(
                 process_transcription,
@@ -501,11 +488,11 @@ def gradio_demo():
                             gr.Textbox(label=f"{provider} Translation Result")
                         )
 
-                    translation_providers.change(
-                        lambda p, prov=provider: gr.update(visible=prov in p),
-                        inputs=[translation_providers],
-                        outputs=[provider_column],
-                    )
+                translation_providers.change(
+                    lambda p, prov=provider: gr.update(visible=prov in p),
+                    inputs=[translation_providers],
+                    outputs=[provider_column],
+                )
 
             translation_button.click(
                 process_translation,
