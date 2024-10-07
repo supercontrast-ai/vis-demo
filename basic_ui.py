@@ -275,7 +275,9 @@ def process_transcription(audio, providers, expected_transcription=None) -> list
             }
 
         return [
-            f"Original Transcription:\n{results.get(provider, {}).get('original', '')}\n\n"
+            f"{provider} Transcription:\n{results.get(provider, {}).get('original', '')}\n\n"
+            f"Normalized {provider} Transcription:\n{normalize_text(results.get(provider, {}).get('original', ''))}\n\n"
+            f"Normalized Expected Transcription:\n{normalized_expected}\n\n"
             f"Diff (Normalized, line-by-line):\n{results.get(provider, {}).get('line_diff', '')}\n\n"
             f"Diff (Normalized, word-by-word):\n{results.get(provider, {}).get('word_diff', '')}\n\n"
             f"Metrics:\n{results.get(provider, {}).get('metrics', '')}"
@@ -359,7 +361,9 @@ def process_translation(
             }
 
         return [
-            f"Original Translation ({source_lang} to {target_lang}):\n{results.get(provider, {}).get('original', '')}\n\n"
+            f"{provider} Translation ({source_lang} to {target_lang}):\n{results.get(provider, {}).get('original', '')}\n\n"
+            f"Normalized {provider} Translation:\n{normalize_text(results.get(provider, {}).get('original', ''))}\n\n"
+            f"Normalized Expected Translation:\n{normalized_expected}\n\n"
             f"Diff (Normalized, line-by-line):\n{results.get(provider, {}).get('line_diff', '')}\n\n"
             f"Diff (Normalized, word-by-word):\n{results.get(provider, {}).get('word_diff', '')}\n\n"
             f"Metrics:\n{results.get(provider, {}).get('metrics', '')}"
