@@ -1,9 +1,13 @@
+import difflib
 import gradio as gr
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
 import numpy as np
 import os
+import re
 
+from jiwer import mer, wer, wil
+from num2words import num2words
 from PIL import Image
 from supercontrast.client import supercontrast_client
 from supercontrast.provider import Provider
@@ -148,7 +152,55 @@ def process_ocr(image, providers):
     return response
 
 
-def process_transcription(audio, providers):
+def normalize_text(text):
+    text = text.lower()
+
+    def replace_number(match):
+        number = int(match.group())
+        return num2words(number)
+
+    text = re.sub(r"\b\d+\b", replace_number, text)
+    text = re.sub(r"[^\w\s]", " ", text)
+    return " ".join(text.split())
+
+
+def line_by_line_diff(text1, text2):
+    diff = difflib.unified_diff(
+        text1.splitlines(),
+        text2.splitlines(),
+        lineterm="",
+        n=0,  # This removes the headers
+    )
+    return "\n".join(list(diff)[2:])  # Skip the first two lines (headers)
+
+
+def word_by_word_diff(text1, text2):
+    words1, words2 = text1.split(), text2.split()
+    seq_matcher = difflib.SequenceMatcher(None, words1, words2)
+    diff = []
+    for opcode, i1, i2, j1, j2 in seq_matcher.get_opcodes():
+        if opcode == "equal":
+            diff.extend(words1[i1:i2])
+        elif opcode == "insert":
+            diff.extend([f"+{word}" for word in words2[j1:j2]])
+        elif opcode == "delete":
+            diff.extend([f"-{word}" for word in words1[i1:i2]])
+        elif opcode == "replace":
+            diff.extend([f"-{word}" for word in words1[i1:i2]])
+            diff.extend([f"+{word}" for word in words2[j1:j2]])
+    return " ".join(diff)
+
+
+def calculate_metrics(reference, hypothesis):
+    wer_score = wer(reference, hypothesis)
+    mer_score = mer(reference, hypothesis)
+    wil_score = wil(reference, hypothesis)
+    return f"""WER (Word Error Rate): {wer_score:.4f}
+MER (Match Error Rate): {mer_score:.4f}
+WIL (Word Information Lost): {wil_score:.4f}"""
+
+
+def process_transcription(audio, providers, expected_transcription=None) -> list[str]:
     results = {}
     for provider in providers:
         client = supercontrast_client(
@@ -156,7 +208,42 @@ def process_transcription(audio, providers):
         )
         response = client.request(TranscriptionRequest(audio_file=audio))
         results[provider] = response.text
-    return [results.get(provider, "") for provider in ["AZURE", "OPENAI"]]
+
+    if expected_transcription:
+        normalized_expected = normalize_text(expected_transcription)
+        for provider, text in results.items():
+            normalized_text = normalize_text(text)
+            line_diff = line_by_line_diff(normalized_expected, normalized_text)
+            word_diff = word_by_word_diff(normalized_expected, normalized_text)
+            metrics = calculate_metrics(normalized_expected, normalized_text)
+            results[provider] = {
+                "original": text,
+                "line_diff": line_diff if line_diff else "No differences found.",
+                "word_diff": (
+                    word_diff
+                    if word_diff != normalized_expected
+                    else "No differences found."
+                ),
+                "metrics": metrics,
+            }
+    else:
+        results = {
+            provider: {
+                "original": text,
+                "line_diff": "",
+                "word_diff": "",
+                "metrics": "",
+            }
+            for provider, text in results.items()
+        }
+
+    return [
+        f"Original:\n{results.get(provider, {}).get('original', '')}\n\n"
+        f"Diff (Normalized, line-by-line):\n{results.get(provider, {}).get('line_diff', '')}\n\n"
+        f"Diff (Normalized, word-by-word):\n{results.get(provider, {}).get('word_diff', '')}\n\n"
+        f"Metrics:\n{results.get(provider, {}).get('metrics', '')}"
+        for provider in ["AZURE", "OPENAI"]
+    ]
 
 
 def process_translation(text, providers, source_lang, target_lang):
@@ -204,6 +291,10 @@ with gr.Blocks() as demo:
 
     with gr.Tab("Transcription"):
         transcription_input = gr.Audio(type="filepath", label="Input Audio")
+        expected_transcription = gr.Textbox(
+            label="Expected Transcription (Optional)",
+            placeholder="Enter expected transcription here",
+        )
         transcription_providers = gr.CheckboxGroup(
             choices=["AZURE", "OPENAI"], label="Providers"
         )
@@ -214,7 +305,11 @@ with gr.Blocks() as demo:
         }
         transcription_button.click(
             process_transcription,
-            inputs=[transcription_input, transcription_providers],
+            inputs=[
+                transcription_input,
+                transcription_providers,
+                expected_transcription,
+            ],
             outputs=list(transcription_outputs.values()),
         )
 

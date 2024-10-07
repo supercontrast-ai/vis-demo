@@ -1,3 +1,5 @@
 gradio
 isort
 black
+num2words
+jiwer
