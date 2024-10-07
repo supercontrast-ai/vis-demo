@@ -385,92 +385,142 @@ def process_translation(
     ]
 
 
-with gr.Blocks() as demo:
-    gr.Markdown("# SuperContrast Demo")
-
-    with gr.Tab("OCR"):
-        ocr_input = gr.Image(type="filepath", label="Input Image")
-        selected_providers = gr.CheckboxGroup(choices=OCR_PROVIDERS, label="Providers")
-        ocr_button = gr.Button("Process OCR")
-
-        # Dynamic output creation
-        ocr_outputs = []
-        for provider in OCR_PROVIDERS:
-            with gr.Row():
-                with gr.Column(visible=False) as provider_column:
-                    ocr_outputs.append(gr.Image(label=f"{provider} OCR Result"))
-                    ocr_outputs.append(gr.Textbox(label=f"{provider} OCR Text"))
-
-                selected_providers.change(
-                    lambda p, prov=provider: gr.update(visible=prov in p),
-                    inputs=[selected_providers],
-                    outputs=[provider_column],
-                )
-
-        ocr_button.click(
-            process_ocr, inputs=[ocr_input, selected_providers], outputs=ocr_outputs
-        )
-
-    with gr.Tab("Transcription"):
-        transcription_input = gr.Audio(type="filepath", label="Input Audio")
-        expected_transcription = gr.Textbox(
-            label="Expected Transcription (Optional)",
-            placeholder="Enter expected transcription here",
-        )
-        transcription_providers = gr.CheckboxGroup(
-            choices=["AZURE", "OPENAI"], label="Providers"
-        )
-        transcription_button = gr.Button("Process Transcription")
-
-        with gr.Row():
-            transcription_outputs = {
-                provider: gr.Textbox(label=f"{provider} Transcription Result")
-                for provider in ["AZURE", "OPENAI"]
-            }
-
-        transcription_button.click(
-            process_transcription,
-            inputs=[
-                transcription_input,
-                transcription_providers,
-                expected_transcription,
-            ],
-            outputs=list(transcription_outputs.values()),
-        )
-
-    with gr.Tab("Translation"):
-        translation_input = gr.Textbox(label="Text to Translate")
-        source_lang = gr.Dropdown(
-            choices=["English", "Spanish", "French", "German", "Italian"],
-            label="Source Language",
-            value="English",
-        )
-        target_lang = gr.Dropdown(
-            choices=["English", "Spanish", "French", "German", "Italian"],
-            label="Target Language",
-            value="Spanish",
-        )
-        expected_translation = gr.Textbox(label="Expected Translation (Optional)")
-        translation_providers = gr.CheckboxGroup(
-            ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"],
-            label="Providers",
-        )
-        translation_button = gr.Button("Translate")
-        translation_outputs = {
-            provider: gr.Textbox(label=f"{provider} Output")
-            for provider in ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"]
+def gradio_demo():
+    with gr.Blocks(
+        css="""
+        #title {
+            font-size: 3em !important;
+            font-weight: 600 !important;
+            margin-bottom: 0.5em !important;
         }
 
-        translation_button.click(
-            process_translation,
-            inputs=[
-                translation_input,
-                translation_providers,
-                source_lang,
-                target_lang,
-                expected_translation,
-            ],
-            outputs=list(translation_outputs.values()),
-        )
+        .gr-box > div > label {
+            font-size: 1.2em !important;
+            font-weight: 500 !important;
+        }
 
-demo.launch()
+        .gr-form > div > label, .gr-form > label {
+            font-size: 1.2em !important;
+            font-weight: 600 !important;
+        }
+
+        .gr-form > div > label[for^='component-'], .gr-form > label[for^='component-'] {
+            font-size: 1.2em !important;
+            font-weight: 600 !important;
+        }
+    """
+    ) as demo:
+        gr.Markdown("# SuperContrast Demo", elem_id="title")
+
+        with gr.Tab("OCR"):
+            ocr_input = gr.Image(type="filepath", label="Input Image")
+            selected_providers = gr.CheckboxGroup(
+                choices=OCR_PROVIDERS, label="Providers"
+            )
+            ocr_button = gr.Button("Process OCR")
+
+            # Dynamic output creation
+            ocr_outputs = []
+            for provider in OCR_PROVIDERS:
+                with gr.Row():
+                    with gr.Column(visible=False) as provider_column:
+                        ocr_outputs.append(gr.Image(label=f"{provider} OCR Result"))
+                        ocr_outputs.append(gr.Textbox(label=f"{provider} OCR Text"))
+
+                    selected_providers.change(
+                        lambda p, prov=provider: gr.update(visible=prov in p),
+                        inputs=[selected_providers],
+                        outputs=[provider_column],
+                    )
+
+            ocr_button.click(
+                process_ocr, inputs=[ocr_input, selected_providers], outputs=ocr_outputs
+            )
+
+        with gr.Tab("Transcription"):
+            transcription_input = gr.Audio(type="filepath", label="Input Audio")
+            expected_transcription = gr.Textbox(
+                label="Expected Transcription (Optional)",
+                placeholder="Enter expected transcription here",
+            )
+            transcription_providers = gr.CheckboxGroup(
+                choices=["AZURE", "OPENAI"], label="Providers"
+            )
+            transcription_button = gr.Button("Process Transcription")
+
+            # Dynamic output creation for transcription
+            transcription_outputs = []
+            for provider in ["AZURE", "OPENAI"]:
+                with gr.Row():
+                    with gr.Column(visible=False) as provider_column:
+                        transcription_outputs.append(
+                            gr.Textbox(label=f"{provider} Transcription Result")
+                        )
+
+                    transcription_providers.change(
+                        lambda p, prov=provider: gr.update(visible=prov in p),
+                        inputs=[transcription_providers],
+                        outputs=[provider_column],
+                    )
+
+            transcription_button.click(
+                process_transcription,
+                inputs=[
+                    transcription_input,
+                    transcription_providers,
+                    expected_transcription,
+                ],
+                outputs=transcription_outputs,
+            )
+
+        with gr.Tab("Translation"):
+            translation_input = gr.Textbox(label="Text to Translate")
+            source_lang = gr.Dropdown(
+                choices=["English", "Spanish", "French", "German", "Italian"],
+                label="Source Language",
+                value="English",
+            )
+            target_lang = gr.Dropdown(
+                choices=["English", "Spanish", "French", "German", "Italian"],
+                label="Target Language",
+                value="Spanish",
+            )
+            expected_translation = gr.Textbox(label="Expected Translation (Optional)")
+            translation_providers = gr.CheckboxGroup(
+                ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"],
+                label="Providers",
+            )
+            translation_button = gr.Button("Translate")
+
+            # Dynamic output creation for translation
+            translation_outputs = []
+            for provider in ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"]:
+                with gr.Row():
+                    with gr.Column(visible=False) as provider_column:
+                        translation_outputs.append(
+                            gr.Textbox(label=f"{provider} Translation Result")
+                        )
+
+                    translation_providers.change(
+                        lambda p, prov=provider: gr.update(visible=prov in p),
+                        inputs=[translation_providers],
+                        outputs=[provider_column],
+                    )
+
+            translation_button.click(
+                process_translation,
+                inputs=[
+                    translation_input,
+                    translation_providers,
+                    source_lang,
+                    target_lang,
+                    expected_translation,
+                ],
+                outputs=translation_outputs,
+            )
+
+    demo.launch()
+
+
+if __name__ == "__main__":
+    gradio_demo()
