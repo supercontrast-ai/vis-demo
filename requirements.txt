@@ -1,5 +1,7 @@
+black
 gradio
 isort
-black
-num2words
 jiwer
+nltk
+num2words
+sacrebleu

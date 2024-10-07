@@ -2,13 +2,20 @@ import difflib
 import gradio as gr
 import matplotlib.patches as patches
 import matplotlib.pyplot as plt
+import nltk
 import numpy as np
 import os
 import re
+import unicodedata
 
-from jiwer import mer, wer, wil
+from jiwer import cer, mer, wer, wil
+from nltk.tokenize import word_tokenize
+from nltk.translate.bleu_score import sentence_bleu as nltk_sentence_bleu
+from nltk.translate.chrf_score import sentence_chrf
+from nltk.translate.meteor_score import single_meteor_score
 from num2words import num2words
 from PIL import Image
+from sacrebleu import sentence_bleu
 from supercontrast.client import supercontrast_client
 from supercontrast.provider import Provider
 from supercontrast.task import (
@@ -18,6 +25,11 @@ from supercontrast.task import (
     TranscriptionRequest,
     TranslationRequest,
 )
+
+# initialize nltk
+nltk.download("punkt")
+nltk.download("punkt_tab")
+nltk.download("wordnet")
 
 # Constants
 TEST_IMAGE_URL = "https://jeroen.github.io/images/testocr.png"
@@ -115,9 +127,9 @@ def plot_bounding_boxes(
         # Save the plot as an image file
         os.makedirs(output_dir, exist_ok=True)
         image_name = os.path.basename(image_path)
-        output_path = os.path.join(output_dir, f"ocr_{provider.value}_{image_name}")
+        output_path = os.path.join(output_dir, f"ocr_{str(provider)}_{image_name}")
         img_result.save(output_path)
-        print(f"Saved {provider.value} plot to: {output_path}")
+        print(f"Saved {str(provider)} plot to: {output_path}")
 
         # Store the image and text result
         results[provider] = {"image": img_result, "text": ocr_response.all_text}
@@ -152,16 +164,35 @@ def process_ocr(image, providers):
     return response
 
 
-def normalize_text(text):
+def normalize_text(text, task="transcription"):
+    # Convert to lowercase
     text = text.lower()
 
-    def replace_number(match):
-        number = int(match.group())
-        return num2words(number)
+    # Unicode normalization (convert to standard form)
+    text = unicodedata.normalize("NFKC", text)
 
-    text = re.sub(r"\b\d+\b", replace_number, text)
+    # Replace numbers with their word equivalents
+    def replace_number(match):
+        number = match.group()
+        try:
+            return num2words(int(number))
+        except ValueError:
+            return num2words(float(number))
+
+    text = re.sub(r"\b\d+(?:\.\d+)?\b", replace_number, text)
+
+    # Remove punctuation and special characters
     text = re.sub(r"[^\w\s]", " ", text)
-    return " ".join(text.split())
+
+    # Normalize whitespace
+    text = " ".join(text.split())
+
+    if task == "translation":
+        # Additional normalization steps for translation
+        # (e.g., handling of diacritics might differ)
+        pass
+
+    return text
 
 
 def line_by_line_diff(text1, text2):
@@ -191,13 +222,27 @@ def word_by_word_diff(text1, text2):
     return " ".join(diff)
 
 
-def calculate_metrics(reference, hypothesis):
+def calculate_transcription_metrics(reference, hypothesis):
+    # Word-level metrics
     wer_score = wer(reference, hypothesis)
     mer_score = mer(reference, hypothesis)
     wil_score = wil(reference, hypothesis)
+
+    # Character-level metric
+    cer_score = cer(reference, hypothesis)
+
+    # Word Information Preserved (WIP)
+    wip_score = 1 - wil_score
+
+    # Word Recognition Rate (WRR)
+    wrr_score = 1 - wer_score
+
     return f"""WER (Word Error Rate): {wer_score:.4f}
 MER (Match Error Rate): {mer_score:.4f}
-WIL (Word Information Lost): {wil_score:.4f}"""
+WIL (Word Information Lost): {wil_score:.4f}
+CER (Character Error Rate): {cer_score:.4f}
+WIP (Word Information Preserved): {wip_score:.4f}
+WRR (Word Recognition Rate): {wrr_score:.4f}"""
 
 
 def process_transcription(audio, providers, expected_transcription=None) -> list[str]:
@@ -215,7 +260,9 @@ def process_transcription(audio, providers, expected_transcription=None) -> list
             normalized_text = normalize_text(text)
             line_diff = line_by_line_diff(normalized_expected, normalized_text)
             word_diff = word_by_word_diff(normalized_expected, normalized_text)
-            metrics = calculate_metrics(normalized_expected, normalized_text)
+            metrics = calculate_transcription_metrics(
+                normalized_expected, normalized_text
+            )
             results[provider] = {
                 "original": text,
                 "line_diff": line_diff if line_diff else "No differences found.",
@@ -238,15 +285,42 @@ def process_transcription(audio, providers, expected_transcription=None) -> list
         }
 
     return [
-        f"Original:\n{results.get(provider, {}).get('original', '')}\n\n"
-        f"Diff (Normalized, line-by-line):\n{results.get(provider, {}).get('line_diff', '')}\n\n"
-        f"Diff (Normalized, word-by-word):\n{results.get(provider, {}).get('word_diff', '')}\n\n"
-        f"Metrics:\n{results.get(provider, {}).get('metrics', '')}"
+        f"Original Transcription:\n\n{results.get(provider, {}).get('original', '')}\n\n"
+        f"Diff (Normalized, line-by-line):\n\n{results.get(provider, {}).get('line_diff', '')}\n\n"
+        f"Diff (Normalized, word-by-word):\n\n{results.get(provider, {}).get('word_diff', '')}\n\n"
+        f"Metrics:\n\n{results.get(provider, {}).get('metrics', '')}"
         for provider in ["AZURE", "OPENAI"]
     ]
 
 
-def process_translation(text, providers, source_lang, target_lang):
+# Add this new function to calculate translation-specific metrics
+def calculate_translation_metrics(reference, hypothesis):
+
+    # Tokenize the input for METEOR score
+    reference_tokens = word_tokenize(reference)
+    hypothesis_tokens = word_tokenize(hypothesis)
+
+    # BLEU score (using sacrebleu)
+    bleu_score = sentence_bleu(hypothesis, [reference]).score
+
+    # BLEU score (using NLTK)
+    nltk_bleu_score = nltk_sentence_bleu([reference_tokens], hypothesis_tokens)
+
+    # METEOR score
+    meteor_score = single_meteor_score(reference_tokens, hypothesis_tokens)
+
+    # chrF score
+    chrf_score = sentence_chrf(hypothesis, [reference])
+
+    return f"""BLEU Score (sacrebleu): {bleu_score:.4f}
+BLEU Score (NLTK): {nltk_bleu_score:.4f}
+METEOR Score: {meteor_score:.4f}
+chrF Score: {chrf_score:.4f}"""
+
+
+def process_translation(
+    text, providers, source_lang, target_lang, expected_translation=None
+):
     results = {}
     for provider in providers:
         client = supercontrast_client(
@@ -257,8 +331,42 @@ def process_translation(text, providers, source_lang, target_lang):
         )
         response = client.request(TranslationRequest(text=text))
         results[provider] = response.text
+
+    if expected_translation:
+        normalized_expected = normalize_text(expected_translation, task="translation")
+        for provider, translation in results.items():
+            normalized_translation = normalize_text(translation, task="translation")
+            line_diff = line_by_line_diff(normalized_expected, normalized_translation)
+            word_diff = word_by_word_diff(normalized_expected, normalized_translation)
+            metrics = calculate_translation_metrics(
+                normalized_expected, normalized_translation
+            )
+            results[provider] = {
+                "original": translation,
+                "line_diff": line_diff if line_diff else "No differences found.",
+                "word_diff": (
+                    word_diff
+                    if word_diff != normalized_expected
+                    else "No differences found."
+                ),
+                "metrics": metrics,
+            }
+    else:
+        results = {
+            provider: {
+                "original": translation,
+                "line_diff": "",
+                "word_diff": "",
+                "metrics": "",
+            }
+            for provider, translation in results.items()
+        }
+
     return [
-        results.get(provider, "")
+        f"Original Translation:\n\n{results.get(provider, {}).get('original', '')}\n\n"
+        f"Diff (Normalized, line-by-line):\n\n{results.get(provider, {}).get('line_diff', '')}\n\n"
+        f"Diff (Normalized, word-by-word):\n\n{results.get(provider, {}).get('word_diff', '')}\n\n"
+        f"Metrics:\n\n{results.get(provider, {}).get('metrics', '')}"
         for provider in ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"]
     ]
 
@@ -314,21 +422,33 @@ with gr.Blocks() as demo:
         )
 
     with gr.Tab("Translation"):
-        translation_input = gr.Textbox(label="Input Text")
+        translation_input = gr.Textbox(label="Text to Translate")
+        source_lang = gr.Dropdown(
+            choices=["en", "es", "fr", "de", "it"], label="Source Language", value="en"
+        )
+        target_lang = gr.Dropdown(
+            choices=["en", "es", "fr", "de", "it"], label="Target Language", value="es"
+        )
+        expected_translation = gr.Textbox(label="Expected Translation (Optional)")
         translation_providers = gr.CheckboxGroup(
-            choices=["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"],
+            ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"],
             label="Providers",
         )
-        source_lang = gr.Textbox(label="Source Language", value="en")
-        target_lang = gr.Textbox(label="Target Language", value="fr")
-        translation_button = gr.Button("Process Translation")
+        translation_button = gr.Button("Translate")
         translation_outputs = {
-            provider: gr.Textbox(label=f"{provider} Translation Result")
+            provider: gr.Textbox(label=f"{provider} Output")
             for provider in ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"]
         }
+
         translation_button.click(
             process_translation,
-            inputs=[translation_input, translation_providers, source_lang, target_lang],
+            inputs=[
+                translation_input,
+                translation_providers,
+                source_lang,
+                target_lang,
+                expected_translation,
+            ],
             outputs=list(translation_outputs.values()),
         )
 
