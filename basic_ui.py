@@ -318,16 +318,30 @@ METEOR Score: {meteor_score:.4f}
 chrF Score: {chrf_score:.4f}"""
 
 
+def language_name_to_code(language_name):
+    language_map = {
+        "English": "en",
+        "Spanish": "es",
+        "French": "fr",
+        "German": "de",
+        "Italian": "it",
+    }
+    return language_map.get(language_name, "en")  # Default to English if not found
+
+
 def process_translation(
     text, providers, source_lang, target_lang, expected_translation=None
 ):
     results = {}
+    source_lang_code = language_name_to_code(source_lang)
+    target_lang_code = language_name_to_code(target_lang)
+
     for provider in providers:
         client = supercontrast_client(
             task=Task.TRANSLATION,
             providers=[Provider[provider]],
-            source_language=source_lang,
-            target_language=target_lang,
+            source_language=source_lang_code,
+            target_language=target_lang_code,
         )
         response = client.request(TranslationRequest(text=text))
         results[provider] = response.text
@@ -363,7 +377,7 @@ def process_translation(
         }
 
     return [
-        f"Original Translation:\n\n{results.get(provider, {}).get('original', '')}\n\n"
+        f"Original Translation ({source_lang} to {target_lang}):\n\n{results.get(provider, {}).get('original', '')}\n\n"
         f"Diff (Normalized, line-by-line):\n\n{results.get(provider, {}).get('line_diff', '')}\n\n"
         f"Diff (Normalized, word-by-word):\n\n{results.get(provider, {}).get('word_diff', '')}\n\n"
         f"Metrics:\n\n{results.get(provider, {}).get('metrics', '')}"
@@ -407,10 +421,13 @@ with gr.Blocks() as demo:
             choices=["AZURE", "OPENAI"], label="Providers"
         )
         transcription_button = gr.Button("Process Transcription")
-        transcription_outputs = {
-            provider: gr.Textbox(label=f"{provider} Transcription Result")
-            for provider in ["AZURE", "OPENAI"]
-        }
+
+        with gr.Row():
+            transcription_outputs = {
+                provider: gr.Textbox(label=f"{provider} Transcription Result")
+                for provider in ["AZURE", "OPENAI"]
+            }
+
         transcription_button.click(
             process_transcription,
             inputs=[
@@ -424,10 +441,14 @@ with gr.Blocks() as demo:
     with gr.Tab("Translation"):
         translation_input = gr.Textbox(label="Text to Translate")
         source_lang = gr.Dropdown(
-            choices=["en", "es", "fr", "de", "it"], label="Source Language", value="en"
+            choices=["English", "Spanish", "French", "German", "Italian"],
+            label="Source Language",
+            value="English",
         )
         target_lang = gr.Dropdown(
-            choices=["en", "es", "fr", "de", "it"], label="Target Language", value="es"
+            choices=["English", "Spanish", "French", "German", "Italian"],
+            label="Target Language",
+            value="Spanish",
         )
         expected_translation = gr.Textbox(label="Expected Translation (Optional)")
         translation_providers = gr.CheckboxGroup(
