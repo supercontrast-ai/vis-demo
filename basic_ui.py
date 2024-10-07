@@ -265,6 +265,7 @@ def process_transcription(audio, providers, expected_transcription=None) -> list
             )
             results[provider] = {
                 "original": text,
+                "normalized": normalized_text,
                 "line_diff": line_diff if line_diff else "No differences found.",
                 "word_diff": (
                     word_diff
@@ -275,13 +276,16 @@ def process_transcription(audio, providers, expected_transcription=None) -> list
             }
 
         return [
-            f"{provider} Transcription:\n{results.get(provider, {}).get('original', '')}\n\n"
-            f"Normalized {provider} Transcription:\n{normalize_text(results.get(provider, {}).get('original', ''))}\n\n"
-            f"Normalized Expected Transcription:\n{normalized_expected}\n\n"
+            f"Transcriptions:\n"
+            f"{provider}: {results.get(provider, {}).get('original', '')}\n"
+            f"Expected: {expected_transcription}\n\n"
+            f"Normalized Transcriptions:\n"
+            f"{provider}: {results.get(provider, {}).get('normalized', '')}\n"
+            f"Expected: {normalized_expected}\n\n"
             f"Diff (Normalized, line-by-line):\n{results.get(provider, {}).get('line_diff', '')}\n\n"
             f"Diff (Normalized, word-by-word):\n{results.get(provider, {}).get('word_diff', '')}\n\n"
             f"Metrics:\n{results.get(provider, {}).get('metrics', '')}"
-            for provider in ["AZURE", "OPENAI"]
+            for provider in providers
         ]
     else:
         return [f"{results.get(provider, '')}" for provider in ["AZURE", "OPENAI"]]
@@ -351,6 +355,7 @@ def process_translation(
             )
             results[provider] = {
                 "original": translation,
+                "normalized": normalized_translation,
                 "line_diff": line_diff if line_diff else "No differences found.",
                 "word_diff": (
                     word_diff
@@ -361,19 +366,19 @@ def process_translation(
             }
 
         return [
-            f"{provider} Translation ({source_lang} to {target_lang}):\n{results.get(provider, {}).get('original', '')}\n\n"
-            f"Normalized {provider} Translation:\n{normalize_text(results.get(provider, {}).get('original', ''))}\n\n"
-            f"Normalized Expected Translation:\n{normalized_expected}\n\n"
+            f"Translations ({source_lang} to {target_lang}):\n"
+            f"{provider}: {results.get(provider, {}).get('original', '')}\n"
+            f"Expected: {expected_translation}\n\n"
+            f"Normalized Translations:\n"
+            f"{provider}: {results.get(provider, {}).get('normalized', '')}\n"
+            f"Expected: {normalized_expected}\n\n"
             f"Diff (Normalized, line-by-line):\n{results.get(provider, {}).get('line_diff', '')}\n\n"
             f"Diff (Normalized, word-by-word):\n{results.get(provider, {}).get('word_diff', '')}\n\n"
             f"Metrics:\n{results.get(provider, {}).get('metrics', '')}"
-            for provider in ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"]
+            for provider in providers
         ]
     else:
-        return [
-            f"{results.get(provider, '')}"
-            for provider in ["ANTHROPIC", "AWS", "AZURE", "GCP", "MODERNMT", "OPENAI"]
-        ]
+        return [f"{results.get(provider, '')}" for provider in providers]
 
 
 def gradio_demo():
